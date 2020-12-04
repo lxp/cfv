@@ -22,7 +22,6 @@ from __future__ import print_function
 
 from future import standard_library
 standard_library.install_aliases()
-from past.builtins import cmp
 from builtins import chr
 from builtins import zip
 from builtins import map
@@ -31,6 +30,7 @@ from builtins import filter
 from builtins import range
 from builtins import object
 
+import io
 import getopt
 import gzip
 import locale
@@ -227,6 +227,8 @@ def logr(text):
 
 
 def log(text):
+    if isinstance(text, bytes):
+        text = text.decode()
     logr(text + '\n')
 
 
@@ -385,10 +387,10 @@ class OneOf(object):
     def __init__(self, *possibilities):
         self.possible = possibilities
 
-    def __cmp__(self, a):
+    def __eq__(self, a):
         if a in self.possible:
-            return 0
-        return cmp(a, self.possible[0])
+            return True
+        return a == self.possible[0]
 
     def __repr__(self):
         return 'OneOf' + repr(self.possible)
@@ -444,7 +446,7 @@ def cfv_all_test(s, o, files=-2, ok=0, unv=0, notfound=0, badcrc=0, badsize=0, c
             files = reduce(operator.add, [ok, badcrc, badsize, notfound, ferror])
         expected = [files, ok, badcrc, badsize, notfound, ferror, unv, cferror, misnamed]
         actual = list(map(intize, x.groups()[:9]))
-        if not list(filter(icomp, map(None, expected, actual))):
+        if not list(filter(icomp, zip(expected, actual))):
             sresult = cfv_status_test(s, o, unv=unv, notfound=notfound, badcrc=badcrc, badsize=badsize, cferror=cferror, ferror=ferror)
             if sresult:
                 return sresult
@@ -634,12 +636,12 @@ def gzC_test(f, extra=None, verify=None, t=None, d=None):
         test_generic('%s -C -f %s %s' % (cmd, f, d), cfv_test)
 
         try:
-            with gzip.open(f) as ifd1:
+            with io.TextIOWrapper(gzip.open(f)) as ifd1:
                 if1 = ifd1.read()
         except (IOError, zlib.error) as e:
             if1 = '%s: %s' % (f, e)
         try:
-            with gzip.open(f2) as ifd2:
+            with io.TextIOWrapper(gzip.open(f2)) as ifd2:
                 if2 = ifd2.read()
         except (IOError, zlib.error) as e:
             if2 = '%s: %s' % (f2, e)
@@ -1101,7 +1103,7 @@ def search_test(t, test_nocrc=0, extra=None):
             os.mkdir(os.path.join(d, 'aoeu'))
             dirsize = os.path.getsize(os.path.join(d, 'aoeu'))
             with open(os.path.join(d, 'idth'), 'wb') as f:
-                f.write('a' * dirsize)
+                f.write(b'a' * dirsize)
             test_generic(cmd + ' -v -C -p %s -t %s -f %s' % (d, t, dcfn), rcurry(cfv_all_test, files=1, ok=1))
             os.remove(os.path.join(d, 'idth'))
             os.rename(os.path.join(d, 'aoeu'), os.path.join(d, 'idth'))
@@ -1353,7 +1355,7 @@ def test_encoding2():
         raw_fnok = 0
         files_fnok = files_fnerrs = 0
         raw_files_fnok = raw_files_fnerrs = 0
-        dirn = filter(lambda s: not s.endswith('torrent'), os.listdir(d))[0]
+        dirn = list(filter(lambda s: not s.endswith('torrent'), os.listdir(d)))[0]
         try:
             files = [os.path.join(dirn, s) for s in os.listdir(os.path.join(d, dirn))]
         except EnvironmentError:
@@ -1362,7 +1364,7 @@ def test_encoding2():
             for fn in files:
                 flag_ok_raw = flag_ok_files = 0
                 for srcfn, destfn in datafns:
-                    if os.path.join(u'\u3070\u304B', destfn).encode('utf-8') == fn:
+                    if os.path.join(u'\u3070\u304B', destfn) == fn:
                         raw_fnok += 1
                         flag_ok_raw = 1
                 try:

@@ -3,10 +3,9 @@ standard_library.install_aliases()
 from builtins import object
 import codecs
 import sys
-from io import StringIO
+from io import BytesIO
 
 from cfv import osutil
-from cfv import strutil
 
 
 _badbytesmarker = u'\ufffe'
@@ -123,21 +122,16 @@ class PeekFile(object):
 
 
 def PeekFileNonseekable(fileobj, filename, encoding):
-    return PeekFile(StringIO(fileobj.read()), filename, encoding)
+    return PeekFile(BytesIO(fileobj.read()), filename, encoding)
 
 
 def PeekFileGzip(filename, encoding):
     import gzip
     if filename == '-':
-        f = gzip.GzipFile(mode='rb', fileobj=StringIO(sys.stdin.read()))  # lovely hack since gzip.py requires a bunch of seeking.. bleh.
+        f = gzip.GzipFile(mode='rb', fileobj=sys.stdin)
     else:
         f = gzip.open(filename, 'rb')
-    try:
-        f.tell()
-    except (AttributeError, IOError):
-        return PeekFileNonseekable(f, filename, encoding)  # gzip.py prior to python2.2 doesn't support seeking, and prior to 2.0 doesn't support readline(size)
-    else:
-        return PeekFile(f, filename, encoding)
+    return PeekFile(f, filename, encoding)
 
 
 class NoCloseFile(object):
@@ -170,9 +164,14 @@ def open_write(filename, config):
 
     if config.gzip >= 2 or (config.gzip >= 0 and filename[-3:].lower() == '.gz'):
         import gzip
+        import io
         if filename == '-':
-            return gzip.GzipFile(filename=filename, mode=mode, fileobj=sys.stdout)
-        return gzip.open(filename, mode, encoding=encoding)
+            res = gzip.GzipFile(filename=filename, mode=mode, fileobj=sys.stdout)
+        else:
+            res = gzip.open(filename, mode)
+        if mode == 'w':
+            res = io.TextIOWrapper(res, encoding=encoding)
+        return res
     else:
         if filename == '-':
             return NoCloseFile(sys.stdout)

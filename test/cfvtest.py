@@ -122,11 +122,8 @@ def runcfv_py(cmd, stdin=None, stdout=None, stderr=None, need_reload=0):
         saved_stdin_fileno = os.dup(sys.stdin.fileno())
         os.dup2(fileno, sys.stdin.fileno())
         os.close(fileno)
-    try:
-        from io import StringIO
-        StringIO().write(u'foo')  # cStringIO with unicode doesn't work in python 1.6
-    except (ImportError, SystemError):
-        from io import StringIO
+
+    from io import StringIO
     obuf = StringIO()
     saved = sys.stdin, sys.stdout, sys.stderr, sys.argv
     cwd = os.getcwd()
@@ -218,7 +215,7 @@ def setcfv(fn=None, internal=None):
     cfv_compiled = compile(_cfv_code, cfvfn, 'exec')
 
     # This is so that the sys.path modification of the wrapper (if it has one) will be executed..
-    imp.load_source('cfvwrapper', cfvfn + '.py', open(cfvfn))
+    imp.load_source('cfvwrapper', cfvfn, open(cfvfn))
 
     get_version_flags()
 

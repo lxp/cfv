@@ -39,6 +39,7 @@ import struct
 import sys
 import time
 from binascii import hexlify, unhexlify
+from _collections import OrderedDict
 from stat import S_ISDIR, S_ISREG
 
 from cfv import caching
@@ -66,7 +67,9 @@ class FilenameError(ValueError):
 
 def cfdecode(s, preferred=None):
     if config.encoding != 'raw':
-        s = str(s, config.getencoding(preferred))
+        s = s.decode(config.getencoding(preferred))
+    else:
+        s = s.decode('utf-8', errors='ignore')
     return s
 
 
@@ -138,11 +141,6 @@ class FileNameFilter(object):
             fn = osutil.path_join(reldir[-1], fn)
             if config.ignorecase:
                 fn = fn.lower()
-            if config.encoding == 'raw' and isinstance(fn, str):
-                try:
-                    fn = fn.encode(osutil.fsencoding)
-                except UnicodeError:
-                    pass
             self.testfiles.add(fn)
 
     def should_test(self, fn):
@@ -563,7 +561,8 @@ class ChksumType(object):
                 filecrct = hexlify(filecrc)
                 if c:
                     self.search_file(filename, filecrc, filesize,
-                                     self.do_f_badcrc, (l_filename, 'crc does not match (%s!=%s)' % (filecrct, hexlify(c))))
+                                     self.do_f_badcrc, (l_filename, 'crc does not match (%s!=%s)'
+                                                        % (filecrct.decode(), hexlify(c).decode())))
                     return -2
             else:
                 if not os.path.exists(l_filename):
@@ -592,7 +591,7 @@ class ChksumType(object):
         return 1
 
     def do_f_enverror(self, l_filename, ex, foundok=0):
-        if ex[0] == errno.ENOENT:
+        if ex.args[0] == errno.ENOENT:
             if foundok:
                 return
             stats.notfound += 1
@@ -773,6 +772,8 @@ def gnu_sum(algo):
         @staticmethod
         def auto_chksumfile_match(file, _autorem=re.compile(r'[0-9a-fA-F]{%d} [ *].' % hexlen)):
             line = file.peekline(4096)
+            if isinstance(line, bytes):
+                return False
             while line:
                 if line[0] not in ';#':
                     return _autorem.match(line) is not None
@@ -787,7 +788,7 @@ def gnu_sum(algo):
             return '%s.%s' % (filename, algo)
 
         def make_addfile(self, filename):
-            crc = hexlify(getfilehash(filename, algo, hasher)[0])
+            crc = hexlify(getfilehash(filename, algo, hasher)[0]).decode()
             return (crc, -1), '%s *%s' % (crc, filename) + os.linesep
 
     return GnuSum_Base
@@ -831,6 +832,8 @@ class SHA1(FooSum_Base, SHA1_MixIn):
     @staticmethod
     def auto_chksumfile_match(file, _autorem=re.compile(r'[0-9a-fA-F]{40} [ *].')):
         line = file.peekline(4096)
+        if isinstance(line, bytes):
+            return False
         while line:
             if line[0] not in ';#':
                 return _autorem.match(line) is not None
@@ -845,7 +848,7 @@ class SHA1(FooSum_Base, SHA1_MixIn):
         return filename + '.sha1'
 
     def make_addfile(self, filename):
-        crc = hexlify(getfilesha1(filename)[0])
+        crc = hexlify(getfilesha1(filename)[0]).decode()
         return (crc, -1), '%s *%s' % (crc, filename) + os.linesep
 
 
@@ -869,6 +872,8 @@ class MD5(FooSum_Base, MD5_MixIn):
     @staticmethod
     def auto_chksumfile_match(file, _autorem=re.compile(r'[0-9a-fA-F]{32} [ *].')):
         line = file.peekline(4096)
+        if isinstance(line, bytes):
+            return False
         while line:
             if line[0] not in ';#':
                 return _autorem.match(line) is not None
@@ -883,7 +888,7 @@ class MD5(FooSum_Base, MD5_MixIn):
         return filename + '.md5'
 
     def make_addfile(self, filename):
-        crc = hexlify(getfilemd5(filename)[0])
+        crc = hexlify(getfilemd5(filename)[0]).decode()
         return (crc, -1), '%s *%s' % (crc, filename) + os.linesep
 
 
@@ -899,9 +904,12 @@ class BSDMD5(TextChksumType, MD5_MixIn):
 
     @staticmethod
     def auto_chksumfile_match(file, _autorem=re.compile(r'MD5 \(.+\) = [0-9a-fA-F]{32}' + '[\r\n]*$')):
-        return _autorem.match(file.peekline(4096)) is not None
+        line = file.peekline(4096)
+        if isinstance(line, bytes):
+            return False
+        return _autorem.match(line) is not None
 
-    auto_filename_match = '^md5$'
+    auto_filename_match = b'^md5$'
 
     _bsdmd5rem = re.compile(r'MD5 \((.+)\) = ([0-9a-fA-F]{32})[\r\n]*$')
 
@@ -916,7 +924,7 @@ class BSDMD5(TextChksumType, MD5_MixIn):
         return filename + '.md5'
 
     def make_addfile(self, filename):
-        crc = hexlify(getfilemd5(filename)[0])
+        crc = hexlify(getfilemd5(filename)[0]).decode()
         return (crc, -1), 'MD5 (%s) = %s' % (filename, crc) + os.linesep
 
 
@@ -940,7 +948,7 @@ class PAR(ChksumType, MD5_MixIn):
 
     @staticmethod
     def auto_chksumfile_match(file):
-        return file.peek(8) == 'PAR\0\0\0\0\0'
+        return file.peek(8) == b'PAR\0\0\0\0\0'
 
     def do_test_chksumfile(self, file):
         def prog2str(v):
@@ -1006,7 +1014,7 @@ class PAR2(ChksumType, MD5_MixIn):
 
     @staticmethod
     def auto_chksumfile_match(file):
-        return file.peek(8) == 'PAR2\0PKT'
+        return file.peek(8) == b'PAR2\0PKT'
 
     def do_test_chksumfile(self, file):
         pkt_header_fmt = '< 8s Q 16s 16s 16s'
@@ -1052,7 +1060,7 @@ class PAR2(ChksumType, MD5_MixIn):
                 if control_md5.digest() != pkt_md5:
                     raise EnvironmentError(errno.EINVAL, 'corrupt par2 file - bad packet hash')
 
-            if pkt_type == 'PAR 2.0\0FileDesc':
+            if pkt_type == b'PAR 2.0\0FileDesc':
                 if not config.docrcchecks:
                     d = file.read(pkt_len - pkt_header_size)
                 file_id, file_md5, file_md5_16k, file_size = struct.unpack(file_pkt_fmt, d[:file_pkt_size])
@@ -1066,7 +1074,7 @@ class PAR2(ChksumType, MD5_MixIn):
                         view.ev_test_cf_filenameencodingerror(file.name, hexlify(file_id), e)
                         continue
                     self.test_file(filename, file_md5, file_size)
-            elif pkt_type == 'PAR 2.0\0Main\0\0\0\0':
+            elif pkt_type == b'PAR 2.0\0Main\0\0\0\0':
                 if not config.docrcchecks:
                     d = file.read(pkt_len - pkt_header_size)
                 if expected_file_ids is None:
@@ -1104,17 +1112,36 @@ class Torrent(ChksumType):
     descinfo = 'name,size,SHA1(piecewise)'
 
     @staticmethod
+    def _decode_str(s, encoding):
+        """
+        Try decoding using the torrent's specified encoding. If it doesn't work then try utf-8.
+        """
+        if isinstance(s, str):
+            s = s.encode('utf-8')
+        try:
+            return s.decode(encoding)
+        except UnicodeDecodeError:
+            return s.decode('utf-8')
+
+    @staticmethod
     def auto_chksumfile_match(file):
-        return file.peek(1) == 'd' and file.peek(4096).find('8:announce') >= 0
+        return file.peek(1) == b'd' and file.peek(4096).find(b'8:announce') >= 0
 
     def do_test_chksumfile(self, file):
         try:
             metainfo = bencode.bdecode(file.read())
+            # Decode fields using the encoding specified in the torrent file
+            encoding = metainfo.get('encoding', b'utf-8').decode('utf-8')
+            metainfo['announce'] = self._decode_str(metainfo['announce'], encoding)
+            if 'comment' in metainfo:
+                metainfo['comment'] = self._decode_str(metainfo['comment'], encoding)
+            metainfo['info']['name'] = self._decode_str(metainfo['info']['name'], encoding)
+            for file_info in metainfo.get('info', {}).get('files', []):
+                file_info['path'] = [self._decode_str(part, encoding) for part in file_info['path']]
+
             btformats.check_message(metainfo)
         except ValueError as e:
             raise EnvironmentError(str(e) or 'invalid or corrupt torrent')
-
-        encoding = metainfo.get('encoding')
 
         comments = []
         if 'creation date' in metainfo:
@@ -1124,22 +1151,13 @@ class Torrent(ChksumType):
                 comments.append('created ' + repr(metainfo['creation date']))
         if 'comment' in metainfo:
             try:
-                comments.append(cfdecode(metainfo['comment'], encoding))
+                comments.append(metainfo['comment'])
             except UnicodeError:
                 pass
         self.do_test_chksumfile_print_testingline(file, ', '.join(comments))
 
         def init_file(filenameparts, ftotpos, filesize):
             done = 0
-            try:
-                filenameparts = [cffndecode(p, encoding) for p in filenameparts]
-            except LookupError as e:  # lookup error is raised when specified encoding isn't found.
-                raise EnvironmentError(str(e))
-            except (UnicodeError, FilenameError) as e:
-                stats.cferror += 1
-                view.ev_test_cf_filenameencodingerror(file.name, repr(filenameparts), e)
-                done = 1
-                l_filename = filename = None
             if not done:
                 filename = osutil.path_join(*filenameparts)
                 if not config.docrcchecks:  # if we aren't testing checksums, just use the standard test_file function, so that -s and such will work.
@@ -1169,7 +1187,7 @@ class Torrent(ChksumType):
 
         info = metainfo['info']
         piecelen = info['piece length']
-        hashes = re.compile('.' * 20, re.DOTALL).findall(info['pieces'])
+        hashes = re.compile(b'.' * 20, re.DOTALL).findall(info['pieces'])
         if 'length' in info:
             total_len = info['length']
             files = [init_file([info['name']], 0, total_len)]
@@ -1178,7 +1196,7 @@ class Torrent(ChksumType):
             if config.strippaths == 0:
                 dirname = info['name']
                 try:
-                    dirname = cffndecode(dirname, encoding)
+                    dirname = cffndecode(dirname.encode(), encoding)
                 except (LookupError, UnicodeError, FilenameError) as e:  # lookup error is raised when specified encoding isn't found.
                     stats.cferror += 1
                     raise EnvironmentError(e)
@@ -1313,7 +1331,8 @@ class Torrent(ChksumType):
     def make_chksumfile_create(self, filename):
         if config.announceurl is None:
             raise EnvironmentError('announce url required')
-        file = fileutil.open_write_raw(filename, config)
+        config.encoding = 'raw'
+        file = fileutil.open_write(filename, config)
         self.sh = hash.sha_new()
         self.files = []
         self.pieces = []
@@ -1345,18 +1364,16 @@ class Torrent(ChksumType):
                     self.piece_done = 0
         if view.progress:
             view.progress.cleanup()
-
-        def cfencode_utf8pref(s):
-            return cfencode(s, 'UTF-8')
-
-        self.files.append({'length': fs, 'path': list(map(cfencode_utf8pref, osutil.path_split(filename)))})
+        self.files.append(OrderedDict({
+            'length': fs, 'path': osutil.path_split(filename)
+        }))
         return ('pieces %i..%i' % (firstpiece, len(self.pieces)), fs), ''
 
     def make_chksumfile_finish(self, file):
         if self.piece_done > 0:
             self.pieces.append(self.sh.digest())
 
-        info = {'pieces': ''.join(self.pieces), 'piece length': self.piece_length}
+        info = {'pieces': b''.join(self.pieces), 'piece length': self.piece_length}
         if config.private_torrent:
             info['private'] = 1
         if len(self.files) == 1 and len(self.files[0]['path']) == 1:
@@ -1372,11 +1389,11 @@ class Torrent(ChksumType):
                 for fileinfo in self.files:
                     del fileinfo['path'][0]
             else:
-                commonroot = cfencode(os.path.split(osutil.getcwdu())[1], 'UTF-8')
+                commonroot = os.path.split(osutil.getcwdu())[1]
             info['files'] = self.files
             info['name'] = commonroot
 
-        btformats.check_info(info)
+        btformats.check_info(OrderedDict(info))
         data = {'info': info, 'announce': cfencode(config.announceurl.strip(), 'UTF-8'), 'creation date': int(time.time())}
         if config.encoding != 'raw':
             data['encoding'] = str(config.getencoding('UTF-8'))
@@ -1440,7 +1457,7 @@ class SFV(SFV_Base, CRC_MixIn):
         return filename + '.sfv'
 
     def make_addfile(self, filename):
-        crc = hexlify(getfilecrc(filename)[0])
+        crc = hexlify(getfilecrc(filename)[0]).decode()
         return (crc, -1), '%s %s' % (filename, crc) + os.linesep
 
 
@@ -1470,7 +1487,7 @@ class SFVMD5(SFV_Base, MD5_MixIn):
         return filename + '.md5'
 
     def make_addfile(self, filename):
-        crc = hexlify(getfilemd5(filename)[0])
+        crc = hexlify(getfilemd5(filename)[0]).decode()
         return (crc, -1), '%s %s' % (filename, crc) + os.linesep
 
 
@@ -1522,7 +1539,7 @@ class CSV(TextChksumType, CRC_MixIn):
 
     def make_addfile(self, filename):
         c, s = getfilecrc(filename)
-        c = hexlify(c)
+        c = hexlify(c).decode()
         return (c, s), '%s,%i,%s,' % (csvquote(filename), s, c) + os.linesep
 
 
@@ -1556,7 +1573,7 @@ class CSV4(TextChksumType, CRC_MixIn):
 
     def make_addfile(self, filename):
         c, s = getfilecrc(filename)
-        c = hexlify(c)
+        c = hexlify(c).decode()
         p = os.path.split(filename)
         return (c, s), '%s,%i,%s,%s,' % (csvquote(p[1]), s, c, csvquote(p[0])) + os.linesep
 
@@ -1722,7 +1739,7 @@ class JPEGSheriff_CRC(TextChksumType, CRC_MixIn):
 
     def make_addfile(self, filename):
         crc, size = getfilecrc(filename)
-        crc = hexlify(crc)
+        crc = hexlify(crc).decode()
         if self.use_dimensions:
             w, h = getimagedimensions(filename)
         else:
@@ -1817,11 +1834,12 @@ def make(cftype, ifilename, testfiles):
     cf_stats = stats.make_sub_stats()
 
     i = 0
+    f_decoding_error = False
     while i < len(testfiles):
         f = testfiles[i]
         i += 1
         if not tfauto and f == '-':
-            f = u''
+            f_decoding_error = True
         elif not os.path.isfile(f):
             if config.recursive and visit_dir(f):
                 if config.recursive == 1:
@@ -1843,12 +1861,12 @@ def make(cftype, ifilename, testfiles):
         if file is IOError:
             continue
         if config.encoding != 'raw':
-            if isinstance(f, str):
+            if f_decoding_error:
                 stats.ferror += 1
                 view.ev_make_filenamedecodingerror(f)
                 continue
         else:
-            if isinstance(f, str):
+            if f_decoding_error:
                 try:
                     f = f.encode(osutil.fsencoding)
                 except UnicodeError as e:
@@ -1871,7 +1889,7 @@ def make(cftype, ifilename, testfiles):
         try:
             (filecrc, filesize), dat = cf.make_addfile(f)
         except EnvironmentError as a:
-            if a[0] == errno.ENOENT:
+            if a.errno == errno.ENOENT:
                 stats.notfound += 1
             else:
                 stats.ferror += 1

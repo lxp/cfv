@@ -1,10 +1,7 @@
 from future import standard_library
 standard_library.install_aliases()
 from builtins import str
-from builtins import object
-import codecs
 import unicodedata
-from io import StringIO
 
 
 def safesort(l):
@@ -35,7 +32,7 @@ def chomp(line):
 
 
 def chompnulls(line):
-    p = line.find('\0')
+    p = line.find(b'\0')
     if p < 0:
         return line
     else:

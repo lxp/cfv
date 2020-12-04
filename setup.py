@@ -2,8 +2,7 @@
 
 import re
 
-from setuptools import setup, find_packages
-
+from setuptools import find_packages, setup
 
 RE_VERSION = r"^__version__\s*=\s*'([^']*)'$"
 
@@ -41,8 +40,8 @@ setup(
         'Topic :: System :: Archiving',
         'Topic :: Utilities',
         'License :: OSI Approved :: GNU General Public License v2 or later (GPLv2+)',
-        'Programming Language :: Python :: 2',
-        'Programming Language :: Python :: 2.7',
+        'Programming Language :: Python :: 3',
+        'Programming Language :: Python :: 3.6',
     ],
     keywords='cfv checksum verify sfv csv crc bsdmd5 md5sum sha1sum sha224sum sha256sum sha384sum sha512sum torrent par par2',
     project_urls={
@@ -50,7 +49,7 @@ setup(
         'Source Code': 'https://github.com/cfv-project/cfv',
         'Original Project': 'http://cfv.sourceforge.net/',
     },
-    python_requires='>=2.7, <3',
+    python_requires='>=3.6',
     packages=find_packages('lib'),
     package_dir={'': 'lib'},
     include_package_data=True,
